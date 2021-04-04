@@ -1,0 +1,129 @@
+[gd_scene load_steps=5 format=2]
+
+[ext_resource path="res://src/controller/scene/2DFractalController.gd" type="Script" id=1]
+
+[sub_resource type="Shader" id=1]
+code = "shader_type canvas_item;
+
+const float ESCAPE = 2.0;
+const float CHANGE_TOLERANCE = 0.001;
+
+uniform float scale = -1;
+uniform int mode = 1;
+uniform int max_iter = 200;
+uniform vec2 position = vec2(0.0, 0.0);
+uniform vec2 render_size = vec2(3840.0, 3840.0);
+
+vec4 colorize(vec3 z) {
+	float l = length(z.xy);
+	if(l > 2.0) {
+		return vec4(vec3(z.z/2.0), 1.0);
+	} else {
+		return vec4(l - z.x, l - z.y, 0.45, 1.0);
+	}
+}
+
+// z*z complex math
+vec2 complex_sq(vec2 z) {
+	return vec2(z.x*z.x - z.y*z.y, 2.0*z.x*z.y);
+}
+
+// 2*Z_h*z_l complex math
+// for pertubation theory mandelbrot
+vec2 pt_2Zz(vec2 h, vec2 l) {
+	return vec2(h.x*l.x, h.x*l.y + l.x*h.y + h.y*l.y) * 2.0;
+}
+
+// low precision
+vec3 mandelbrot_lp(vec2 c) {
+	vec2 z = vec2(0.0, 0.0);
+	float change_frac = 0.0;
+	for(int i = 0; i < max_iter; i++) {
+		vec2 z_next = complex_sq(z) + c;
+		change_frac = length(z_next - z);
+		z = z_next;
+		if(change_frac < CHANGE_TOLERANCE/exp(scale)) {
+			return vec3(z, 0.0);
+		}
+		if(length(z) > ESCAPE) {
+			return vec3(z, float(i)/float(max_iter));
+		}
+	}
+	return vec3(z, 1.0);
+}
+
+// pertubation theory
+vec3 mandelbrot_pt(vec2 c) {
+	vec2 zd = vec2(0.0, 0.0);
+	vec2 z_ref = mandelbrot_lp(c).xy;
+	vec2 z = vec2(0.0, 0.0);
+	float change_frac = 0.0;
+	for(int i = 0; i < max_iter; i++) {
+		// center around origin
+		vec2 zd_next = pt_2Zz(z_ref, zd) + complex_sq(zd);
+		zd = zd_next;
+		change_frac = length(z - zd);
+		z = z_ref + zd;
+		if(change_frac < CHANGE_TOLERANCE/exp(scale)) {
+			return vec3(z, 0.0);
+		}
+	}
+	return vec3(z_ref + zd, 0.0);
+}
+
+void fragment() {
+	vec2 mirroredUV = (UV - 0.5) * 2.0;
+	vec2 mb_location = mirroredUV / exp(scale) + position / render_size;
+	vec3 z;
+	if(mode == 0) {
+		z = mandelbrot_lp(mb_location);
+	}
+	if(mode == 1) {
+		z = mandelbrot_pt(mb_location);
+	}
+	COLOR = colorize(z);
+}"
+
+[sub_resource type="ShaderMaterial" id=2]
+shader = SubResource( 1 )
+shader_param/scale = -1.0
+shader_param/mode = 0
+shader_param/max_iter = 400
+shader_param/position = Vector2( 0, 0 )
+shader_param/render_size = Vector2( 3840, 3840 )
+
+[sub_resource type="QuadMesh" id=3]
+size = Vector2( 3840, 3840 )
+
+[node name="TestScene2D" type="Node2D"]
+script = ExtResource( 1 )
+max_iterations = 400
+
+[node name="Display" type="MeshInstance2D" parent="."]
+material = SubResource( 2 )
+mesh = SubResource( 3 )
+
+[node name="Camera2D" type="Camera2D" parent="."]
+current = true
+
+[node name="CanvasLayer" type="CanvasLayer" parent="."]
+
+[node name="MarginContainer" type="MarginContainer" parent="CanvasLayer"]
+margin_left = 10.0
+margin_top = 10.0
+margin_right = 40.0
+margin_bottom = 40.0
+__meta__ = {
+"_edit_use_anchors_": false
+}
+
+[node name="MaxIterations" type="SpinBox" parent="CanvasLayer/MarginContainer"]
+margin_right = 74.0
+margin_bottom = 30.0
+max_value = 2000.0
+value = 400.0
+rounded = true
+__meta__ = {
+"_edit_use_anchors_": false
+}
+[connection signal="value_changed" from="CanvasLayer/MarginContainer/MaxIterations" to="." method="_on_MaxIterations_value_changed"]
